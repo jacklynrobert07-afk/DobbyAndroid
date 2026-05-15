@@ -87,12 +87,18 @@ struct CodeMemBuffer : MemBuffer {
     emit(buffer, buffer_size);
   }
 
-  template <typename T> void Emit(T value) {
+template <typename T> void Emit(T value) {
     EmitBuffer((uint8_t *)&value, sizeof(value));
   }
 
 #if defined(TARGET_ARCH_ARM)
   enum ExecuteState{ARMExecuteState, ThumbExecuteState};
+  
+  // [DIPERBAIKI] Menambahkan definisi tipe data instruksi 32-bit yang kelupaan
+  typedef uint32_t arm_inst_t;
+  typedef uint16_t thumb1_inst_t;
+  typedef uint32_t thumb2_inst_t;
+
   arm_inst_t LoadARMInst(uint32_t offset) {
     return *(arm_inst_t *)(data() + offset);
   }
