@@ -1,4 +1,4 @@
-name: Android ARM64 Builder
+name: Android Full Builder (32 & 64 bit)
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  android_arm64:
+  build_android_all:
     runs-on: ubuntu-latest
     needs: delete_latest_release
     permissions:
@@ -43,25 +43,36 @@ jobs:
         mkdir -p artifact
       shell: bash
 
-    - name: compile android arm64
+    - name: compile arm64-v8a (64-bit)
       run: |
-        # Mengubah --arch menjadi arm64-v8a sesuai standar ABI Android NDK
         python3 scripts/platform_builder.py --platform=android --arch=arm64-v8a --cmake_dir=$HOME/opt/cmake-$CMAKE_VERSION --llvm_dir=$HOME/opt/llvm-$LLVM_VERSION --android_ndk_dir=$HOME/opt/ndk-$NDK_VERSION
-        cp include/dobby.h build/android
-        tar -zcvf build/dobby-android-arm64.tar.gz build/android
-        cp build/dobby-android-arm64.tar.gz artifact/
+        cp include/dobby.h build/android/
+        # Kompres hasil 64-bit
+        cd build
+        tar -zcvf dobby-android-arm64.tar.gz android/
+        cp dobby-android-arm64.tar.gz ../artifact/
+        cd ..
       shell: bash
 
-    - name: print output
+    - name: compile armeabi-v7a (32-bit)
       run: |
-        ls -lha .
+        # Hapus folder build lama agar tidak tercampur
+        rm -rf build/android/arm64-v8a
+        python3 scripts/platform_builder.py --platform=android --arch=armeabi-v7a --cmake_dir=$HOME/opt/cmake-$CMAKE_VERSION --llvm_dir=$HOME/opt/llvm-$LLVM_VERSION --android_ndk_dir=$HOME/opt/ndk-$NDK_VERSION
+        # Kompres hasil 32-bit
+        cd build
+        tar -zcvf dobby-android-arm32.tar.gz android/
+        cp dobby-android-arm32.tar.gz ../artifact/
+        cd ..
+      shell: bash
 
     - name: update release
       uses: ncipollo/release-action@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         tag: latest
-        body: "Dobby build otomatis khusus Android ARM64 (64-bit)"
-        artifacts: "build/dobby-android-arm64.tar.gz"
+        body: "Dobby build otomatis untuk Android 64-bit (arm64-v8a) dan 32-bit (armeabi-v7a)"
+        # Mengunggah semua file .tar.gz yang ada di folder artifact
+        artifacts: "artifact/*.tar.gz" 
         allowUpdates: true
         replacesArtifacts: true
