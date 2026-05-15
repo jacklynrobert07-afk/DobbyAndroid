@@ -6,7 +6,7 @@
 #include "core/arch/arm/registers-arm.h"
 #include "core/assembler/assembler.h"
 
-#include "MemoryAllocator/CodeBuffer/code_buffer_arm.h"
+// [DIPERBAIKI] Hapus include code_buffer_arm.h yang sudah usang dan digantikan oleh CodeMemBuffer
 
 enum ref_label_type_t { kLdrLiteral };
 
@@ -184,15 +184,19 @@ class Assembler : public AssemblerBase {
 private:
   ExecuteState execute_state_;
 
+protected:
+  // [DIPERBAIKI] Deklarasi eksplisit buffer_ menggunakan sistem yang baru (CodeMemBuffer)
+  CodeMemBuffer *buffer_;
+
 public:
   Assembler(void *address) : AssemblerBase(address) {
     execute_state_ = ARMExecuteState;
-    buffer_ = new CodeBuffer();
+    // [DIPERBAIKI] Arahkan langsung ke code_buffer_ milik class induk (AssemblerBase)
+    buffer_ = &code_buffer_; 
   }
 
-  // shared_ptr is better choice
-  // but we can't use it at kernelspace
-  Assembler(void *address, CodeBuffer *buffer) : AssemblerBase(address) {
+  // [DIPERBAIKI] Ubah parameter CodeBuffer menjadi CodeMemBuffer
+  Assembler(void *address, CodeMemBuffer *buffer) : AssemblerBase(address) {
     execute_state_ = ARMExecuteState;
     buffer_ = buffer;
   }
@@ -314,16 +318,18 @@ public:
   ~TurboAssembler() {
   }
 
-  TurboAssembler(void *address, CodeBuffer *buffer) : Assembler(address, buffer) {
+  // [DIPERBAIKI] Ubah parameter CodeBuffer menjadi CodeMemBuffer
+  TurboAssembler(void *address, CodeMemBuffer *buffer) : Assembler(address, buffer) {
   }
 
   void Ldr(Register rt, PseudoLabel *label) {
     if (label->pos()) {
-      int offset = label->pos() - buffer_->buffer_size();
+      // [DIPERBAIKI] Ganti buffer_size() menjadi size() sesuai format CodeMemBuffer
+      int offset = label->pos() - buffer_->size();
       ldr(rt, MemOperand(pc, offset));
     } else {
       // record this ldr, and fix later.
-      label->link_to(kLdrLiteral, buffer_->buffer_size());
+      label->link_to(kLdrLiteral, buffer_->size());
       ldr(rt, MemOperand(pc, 0));
     }
   }
