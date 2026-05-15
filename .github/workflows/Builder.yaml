@@ -47,7 +47,6 @@ jobs:
       run: |
         python3 scripts/platform_builder.py --platform=android --arch=arm64-v8a --cmake_dir=$HOME/opt/cmake-$CMAKE_VERSION --llvm_dir=$HOME/opt/llvm-$LLVM_VERSION --android_ndk_dir=$HOME/opt/ndk-$NDK_VERSION
         cp include/dobby.h build/android/
-        # Kompres hasil 64-bit
         cd build
         tar -zcvf dobby-android-arm64.tar.gz android/
         cp dobby-android-arm64.tar.gz ../artifact/
@@ -56,10 +55,83 @@ jobs:
 
     - name: compile armeabi-v7a (32-bit)
       run: |
-        # Hapus folder build lama agar tidak tercampur
+        # --- AUTO HEALING SCRIPT FOR ARM32 BUGS START ---
+        echo "typedef uint32_t arm_inst_t;" >> source/dobby/common.h
+        echo "typedef uint16_t thumb1_inst_t;" >> source/dobby/common.h
+        echo "typedef uint32_t thumb2_inst_t;" >> source/dobby/common.h
+        
+        sed -i 's/#include "MemoryAllocator\/CodeBuffer\/code_buffer_arm.h"//g' source/core/assembler/assembler-arm.h
+        sed -i 's/Assembler(void \*address) : AssemblerBase(address)/Assembler(void \*address) : AssemblerBase((addr_t)address)/g' source/core/assembler/assembler-arm.h
+        sed -i 's/Assembler(void \*address, CodeBuffer \*buffer) : AssemblerBase(address)/Assembler(void \*address, CodeMemBuffer \*buffer) : AssemblerBase((addr_t)address)/g' source/core/assembler/assembler-arm.h
+        sed -i 's/Assembler(void \*address, CodeMemBuffer \*buffer) : AssemblerBase(address)/Assembler(void \*address, CodeMemBuffer \*buffer) : AssemblerBase((addr_t)address)/g' source/core/assembler/assembler-arm.h
+        sed -i 's/AssemblerBase::SetRealizedAddress(address);/set_fixed_addr((addr_t)address);/g' source/core/assembler/assembler-arm.h
+        sed -i 's/label->pos()/label->pos/g' source/core/assembler/assembler-arm.h
+        sed -i 's/buffer_->/code_buffer()->/g' source/core/assembler/assembler-arm.h
+        sed -i 's/buffer_size()/size()/g' source/core/assembler/assembler-arm.h
+        sed -i 's/function.address()/function.address/g' source/core/assembler/assembler-arm.h
+        sed -i 's/data_labels_/data_labels/g' source/core/assembler/assembler-arm.h
+        sed -i 's/GetRealizedAddress()/fixed_addr/g' source/core/assembler/assembler-arm.h
+        
+        sed -i 's/CodeBuffer/CodeMemBuffer/g' source/core/assembler/assembler-arm.cc
+        sed -i 's/\.pc_offset/.offset()/g' source/core/assembler/assembler-arm.cc
+        sed -i 's/buffer_->/code_buffer()->/g' source/core/assembler/assembler-arm.cc
+        
+        sed -i 's/CodeBuffer/CodeMemBuffer/g' source/InstructionRelocation/arm/InstructionRelocationARM.h
+        sed -i 's/CodeBuffer/CodeMemBuffer/g' source/InstructionRelocation/arm/InstructionRelocationARM.cc
+        sed -i 's/\.pc_offset/.offset()/g' source/InstructionRelocation/arm/InstructionRelocationARM.h
+        sed -i 's/\.pc_offset/.offset()/g' source/InstructionRelocation/arm/InstructionRelocationARM.cc
+        sed -i 's/pos()/pos/g' source/InstructionRelocation/arm/InstructionRelocationARM.h
+        sed -i 's/pos()/pos/g' source/InstructionRelocation/arm/InstructionRelocationARM.cc
+        sed -i 's/buffer_->/code_buffer()->/g' source/InstructionRelocation/arm/InstructionRelocationARM.h
+        sed -i 's/buffer_->/code_buffer()->/g' source/InstructionRelocation/arm/InstructionRelocationARM.cc
+        sed -i 's/buffer_size()/size()/g' source/InstructionRelocation/arm/InstructionRelocationARM.h
+        sed -i 's/buffer_size()/size()/g' source/InstructionRelocation/arm/InstructionRelocationARM.cc
+        sed -i 's/GetBufferSize()/size()/g' source/InstructionRelocation/arm/InstructionRelocationARM.cc
+        sed -i 's/Size()/size()/g' source/InstructionRelocation/arm/InstructionRelocationARM.h
+        sed -i 's/Size()/size()/g' source/InstructionRelocation/arm/InstructionRelocationARM.cc
+        sed -i 's/GetRealizedAddress()/fixed_addr/g' source/InstructionRelocation/arm/InstructionRelocationARM.h
+        sed -i 's/GetRealizedAddress()/fixed_addr/g' source/InstructionRelocation/arm/InstructionRelocationARM.cc
+        
+        sed -i 's/AssemblyCodeBuilder/AssemblerCodeBuilder/g' source/TrampolineBridge/ClosureTrampolineBridge/arm/closure_bridge_arm.cc
+        sed -i 's/code->addr/code.addr/g' source/TrampolineBridge/ClosureTrampolineBridge/arm/closure_bridge_arm.cc
+        sed -i 's/code\.addr()/code.addr/g' source/TrampolineBridge/ClosureTrampolineBridge/arm/closure_bridge_arm.cc
+        
+        cat << 'EOF' > source/TrampolineBridge/ClosureTrampolineBridge/arm/ClosureTrampolineARM.cc
+        #include "platform_detect_macro.h"
+        #if defined(TARGET_ARCH_ARM)
+        #include "dobby/dobby_internal.h"
+        #include "core/assembler/assembler-arm.h"
+        #include "TrampolineBridge/ClosureTrampolineBridge/ClosureTrampoline.h"
+        #include "TrampolineBridge/ClosureTrampolineBridge/common_bridge_handler.h"
+        extern "C" void *get_closure_bridge_addr();
+        using namespace zz;
+        using namespace zz::arm;
+        ClosureTrampoline *ClosureTrampoline::CreateClosureTrampoline(void *carry_data, void *carry_handler) {
+        #define _ turbo_assembler_.
+          TurboAssembler turbo_assembler_(0);
+          PseudoLabel entry_label(0);
+          PseudoLabel forward_bridge_label(0);
+          _ Ldr(r12, &entry_label);
+          _ Ldr(pc, &forward_bridge_label);
+          _ bindLabel(&entry_label);
+          _ EmitAddress((uint32_t)(uintptr_t)0xdeadbeef); 
+          uint32_t data_offset = turbo_assembler_.code_buffer()->size() - 4;
+          _ bindLabel(&forward_bridge_label);
+          _ EmitAddress((uint32_t)(uintptr_t)get_closure_bridge_addr());
+          auto closure_tramp_block = AssemblerCodeBuilder::FinalizeFromTurboAssembler(&turbo_assembler_);
+          CodeMemBlock mem_block(closure_tramp_block.addr, closure_tramp_block.size);
+          ClosureTrampoline *tramp_entry = new ClosureTrampoline(0, mem_block, carry_data, carry_handler);
+          void *real_data_ptr = (void *)((addr_t)tramp_entry);
+          DobbyCodePatch((void *)(closure_tramp_block.addr + data_offset), (uint8_t *)&real_data_ptr, sizeof(void*));
+          return tramp_entry;
+        }
+        #endif
+        EOF
+        # --- AUTO HEALING SCRIPT END ---
+
+        # Hapus folder build 64-bit agar tidak error
         rm -rf build/android/arm64-v8a
         python3 scripts/platform_builder.py --platform=android --arch=armeabi-v7a --cmake_dir=$HOME/opt/cmake-$CMAKE_VERSION --llvm_dir=$HOME/opt/llvm-$LLVM_VERSION --android_ndk_dir=$HOME/opt/ndk-$NDK_VERSION
-        # Kompres hasil 32-bit
         cd build
         tar -zcvf dobby-android-arm32.tar.gz android/
         cp dobby-android-arm32.tar.gz ../artifact/
@@ -72,7 +144,6 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         tag: latest
         body: "Dobby build otomatis untuk Android 64-bit (arm64-v8a) dan 32-bit (armeabi-v7a)"
-        # Mengunggah semua file .tar.gz yang ada di folder artifact
         artifacts: "artifact/*.tar.gz" 
         allowUpdates: true
         replacesArtifacts: true
