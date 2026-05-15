@@ -2,9 +2,15 @@
 
 #include <sys/types.h>
 #include <stddef.h>
+#include <unistd.h>
+#include <sys/mman.h>
 #include "pac_kit.h"
 
-#include "../source/PlatformUnifiedInterface/platform.h"
+// Hapus include platform.h untuk memecah circular dependency
+// #include "../source/PlatformUnifiedInterface/platform.h"
+
+// Memastikan fungsi ALIGN_FLOOR tetap terbaca
+#include "../source/dobby/utility_macro.h"
 
 namespace features {
 
@@ -32,11 +38,11 @@ template <typename T> inline T arm64e_pac_strip_and_sign(T &addr) {
 namespace android {
 inline void make_memory_readable(void *address, size_t size) {
 #if defined(ANDROID)
-  // [DIPERBAIKI] Menambahkan OSMemory:: pada PageSize() dan SetPermission()
-  auto page = (void *)ALIGN_FLOOR(address, OSMemory::PageSize());
-  if (!OSMemory::SetPermission(page, OSMemory::PageSize(), kReadExecute)) {
-    return;
-  }
+  // [DIPERBAIKI] Menggunakan fungsi native POSIX mprotect dan sysconf 
+  // agar tidak perlu memanggil class OSMemory dari platform.h
+  long page_size = sysconf(_SC_PAGESIZE);
+  auto page = (void *)ALIGN_FLOOR(address, page_size);
+  mprotect(page, page_size, PROT_READ | PROT_EXEC);
 #endif
 }
 } // namespace android
