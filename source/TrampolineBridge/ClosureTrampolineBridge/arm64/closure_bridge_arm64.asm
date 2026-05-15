@@ -53,11 +53,11 @@ ldr x1, [sp, #(2 * 8 + 2 * 8 + 30 * 8 + 8 * 16)]
 #if defined(__APPLE__)
 adrp TMP_REG_0, cdecl(common_closure_bridge_handler)@PAGE
 add TMP_REG_0, TMP_REG_0, cdecl(common_closure_bridge_handler)@PAGEOFF
-#else
-adrp x17, cdecl(common_closure_bridge_handler)
-add  x17, x17, :lo12:cdecl(common_closure_bridge_handler)
-#endif
 blr TMP_REG_0
+#else
+// [DIPERBAIKI] Menggunakan branch relatif (bl) yang wajib untuk format file PIC Android .so
+bl cdecl(common_closure_bridge_handler)
+#endif
 
 // restore stack, saved original sp
 add sp, sp, #(2 * 8)
